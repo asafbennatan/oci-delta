@@ -3,7 +3,7 @@ module github.com/containers/oci-delta
 go 1.26
 
 require (
-	github.com/asafbennatan/puffma v0.0.0-20260727120856-88e6cdfd823f
+	github.com/asafbennatan/puffma v0.0.0-20260727125036-392b54515f64
 	github.com/containers/image/v5 v5.36.2
 	github.com/containers/storage v1.59.1
 	github.com/containers/tar-diff v0.5.1
