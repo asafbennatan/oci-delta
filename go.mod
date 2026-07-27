@@ -3,6 +3,7 @@ module github.com/containers/oci-delta
 go 1.26
 
 require (
+	github.com/asafbennatan/puffma v0.0.0-20260727120856-88e6cdfd823f
 	github.com/containers/image/v5 v5.36.2
 	github.com/containers/storage v1.59.1
 	github.com/containers/tar-diff v0.5.1
@@ -63,4 +64,4 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace github.com/containers/tar-diff => github.com/asafbennatan/tar-diff v0.0.0-20260727092933-b12c1dbd0426
+replace github.com/containers/tar-diff => github.com/asafbennatan/tar-diff v0.0.0-20260727122843-5f83a3490525

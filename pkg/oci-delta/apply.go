@@ -187,7 +187,7 @@ func processLayerDiff(tmpDir string, log Logger, writer OCIWriter, tarDiffReader
 	// Chain: tar-patch → [diffIDHash, gzWriter] → [compressedHash, tmpFile]
 	uncompressedMulti := io.MultiWriter(diffIDHash, gzWriter)
 
-	if err := tarpatch.Apply(tarDiffReader, dataSource, uncompressedMulti); err != nil {
+	if err := tarpatch.ApplyWithPlugins(tarDiffReader, dataSource, uncompressedMulti, puffmaXzPlugin{}); err != nil {
 		gzWriter.Close()
 		return "", 0, fmt.Errorf("tar-patch failed: %w", err)
 	}

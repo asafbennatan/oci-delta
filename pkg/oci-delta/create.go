@@ -33,6 +33,7 @@ type CreateOptions struct {
 	ZstdDiffLevel       *int                     // per-file zstd patch level; nil keeps tar-diff default (<0 => compression level)
 	ZstdDiffWindowMiB   *int                     // zstd window MiB; nil/0 means auto from source size
 	ZstdDiffFallbackRaw *bool                    // nil means tar-diff default (true)
+	EnableXzDelta       bool                     // diff .xz files below the LZMA entropy coder via puffma
 }
 
 func CreateDelta(oldReader OCIReader, newReader OCIReader, writer OCIWriter, opts CreateOptions, log Logger) (*CreateStats, error) {
@@ -360,6 +361,9 @@ func computeLayerDiffsParallel(log Logger, old *OCIImage, new *OCIImage, newOnly
 	}
 	if opts.ZstdDiffFallbackRaw != nil {
 		diffOpts.SetZstdDiffFallbackRaw(*opts.ZstdDiffFallbackRaw)
+	}
+	if opts.EnableXzDelta {
+		diffOpts.RegisterPlugin(puffmaXzPlugin{})
 	}
 
 	var oldFiles []io.ReadSeeker

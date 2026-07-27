@@ -19,6 +19,7 @@ var (
 	createZstdDiffLevel     int
 	createZstdDiffWindowMiB int
 	createZstdDiffFallback  bool
+	createEnableXzDelta     bool
 )
 
 var createCmd = &cobra.Command{
@@ -47,6 +48,7 @@ func init() {
 	createCmd.Flags().IntVar(&createZstdDiffLevel, "zstd-diff-level", -1, "zstd level for dictionary patches (-1 = use compression-level/default)")
 	createCmd.Flags().IntVar(&createZstdDiffWindowMiB, "zstd-diff-window", 0, "zstd window size in MiB for dictionary patches (0 = auto)")
 	createCmd.Flags().BoolVar(&createZstdDiffFallback, "zstd-diff-fallback-raw", true, "emit raw data when a zstd dictionary patch is not smaller")
+	createCmd.Flags().BoolVar(&createEnableXzDelta, "enable-xz-delta", false, "diff .xz files below the LZMA entropy coder instead of storing them whole")
 	createCmd.Flags().StringArrayVar(&createSignatures, "signature", nil, "signature OCI artifact to embed (can be specified multiple times)")
 }
 
@@ -113,6 +115,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		ZstdDiffLevel:       &zstdDiffLevel,
 		ZstdDiffWindowMiB:   &zstdDiffWindow,
 		ZstdDiffFallbackRaw: &fallbackRaw,
+		EnableXzDelta:       createEnableXzDelta,
 	}, log)
 	if err != nil {
 		writer.Close()

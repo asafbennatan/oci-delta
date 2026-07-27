@@ -56,7 +56,7 @@ func ImportDelta(delta *DeltaArtifact, store storage.Store, dataSource DataSourc
 
 			pr, pw := io.Pipe()
 			go func() {
-				pw.CloseWithError(tarpatch.Apply(r, dataSource, pw))
+				pw.CloseWithError(tarpatch.ApplyWithPlugins(r, dataSource, pw, puffmaXzPlugin{}))
 			}()
 
 			newLayer, _, err := store.PutLayer("", parentLayerID, nil, "", false, nil, pr)
