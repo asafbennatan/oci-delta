@@ -64,4 +64,4 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace github.com/containers/tar-diff => github.com/asafbennatan/tar-diff v0.0.0-20260727122843-5f83a3490525
+replace github.com/containers/tar-diff => github.com/asafbennatan/tar-diff v0.0.0-20260728063824-e72dba1cc1f2
