@@ -35,13 +35,21 @@ RECONSTRUCTED="$TMPDIR/reconstructed.oci-archive"
 OSTREE_REPO="$TMPDIR/ostree-repo"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+OCI_DELTA="${OCI_DELTA:-$ROOT_DIR/oci-delta}"
+if [ ! -x "$OCI_DELTA" ]; then
+    echo "==> Building oci-delta"
+    make -C "$ROOT_DIR" build
+    OCI_DELTA="$ROOT_DIR/oci-delta"
+fi
 
 echo "==> Creating ostree repo from $IMAGE1"
 python3 "$SCRIPT_DIR/create-ostree-repo.py" "$IMAGE1" "$OSTREE_REPO"
 
 echo ""
 echo "==> Creating delta: $IMAGE1 -> $IMAGE2"
-./oci-delta create -verbose "$IMAGE1" "$IMAGE2" "$DELTA_FILE"
+"$OCI_DELTA" create -v "$IMAGE1" "$IMAGE2" "$DELTA_FILE"
 
 if [ ! -f "$DELTA_FILE" ]; then
     echo "Error: Delta file was not created"
@@ -53,7 +61,7 @@ echo "Delta size: $DELTA_SIZE bytes"
 
 echo ""
 echo "==> Applying delta to reconstruct image"
-./oci-delta apply -repo "$OSTREE_REPO" "$DELTA_FILE" "$RECONSTRUCTED"
+"$OCI_DELTA" apply --ostree-repo "$OSTREE_REPO" "$DELTA_FILE" "$RECONSTRUCTED"
 
 if [ ! -f "$RECONSTRUCTED" ]; then
     echo "Error: Reconstructed archive was not created"

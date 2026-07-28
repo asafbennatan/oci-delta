@@ -13,7 +13,7 @@ except ImportError:
     sys.exit("error: 'zstandard' package required — pip install zstandard")
 
 MAGIC = b'tardf1\n\x00'
-OP_DATA, OP_OPEN, OP_COPY, OP_ADDDATA, OP_SEEK, OP_ZSTDDICT = 0, 1, 2, 3, 4, 5
+OP_DATA, OP_OPEN, OP_COPY, OP_ADDDATA, OP_SEEK, OP_ZSTDDICT, OP_PLUGIN = 0, 1, 2, 3, 4, 5, 6
 TAR_BLOCK = 512
 
 
@@ -145,7 +145,7 @@ def iter_ops(blob):
                 return
             op = b[0]
             size = _varint(buf)
-            if op in (OP_DATA, OP_ADDDATA, OP_OPEN, OP_ZSTDDICT):
+            if op in (OP_DATA, OP_ADDDATA, OP_OPEN, OP_ZSTDDICT, OP_PLUGIN):
                 yield op, size, buf.read(size)
             else:
                 yield op, size, None
@@ -155,7 +155,8 @@ def iter_ops(blob):
 
 class FileEntry:
     __slots__ = ('name', 'size', 'typeflag', 'copy_bytes', 'adddata_bytes',
-                 'data_bytes', 'sources', 'payload_data', 'compressed_payload')
+                 'data_bytes', 'plugin_bytes', 'plugin_patch_len', 'sources',
+                 'payload_data', 'compressed_payload')
 
     def __init__(self, name, size, typeflag='0'):
         self.name = name
@@ -164,6 +165,8 @@ class FileEntry:
         self.copy_bytes = 0
         self.adddata_bytes = 0
         self.data_bytes = 0
+        self.plugin_bytes = 0       # output bytes reconstructed via a named plugin
+        self.plugin_patch_len = 0   # size of the opaque plugin patch on the wire
         self.sources = []  # ordered unique source paths used for this file's data
         self.payload_data = bytearray()  # adddata diff bytes + raw data bytes
         self.compressed_payload = 0
@@ -174,8 +177,11 @@ class FileEntry:
 
     @property
     def reuse_type(self):
-        if self.copy_bytes + self.adddata_bytes + self.data_bytes == 0:
+        total = self.copy_bytes + self.adddata_bytes + self.data_bytes + self.plugin_bytes
+        if total == 0:
             return 'new'
+        if self.plugin_bytes and not self.copy_bytes and not self.adddata_bytes and not self.data_bytes:
+            return 'plugin'
         if self.adddata_bytes == 0 and self.data_bytes == 0:
             return 'reused'
         if self.copy_bytes == 0 and self.adddata_bytes == 0:
@@ -365,6 +371,20 @@ def analyze_layer(blob):
             else:
                 break
 
+    def apply_plugin_patch(patch_len):
+        # A plugin patch always reconstructs the entire remaining content of
+        # the file it targets in a single op (see WritePluginPatch).
+        nonlocal state, current_file, data_rem, pad_rem
+        if state != 'data' or current_file is None:
+            return
+        current_file.plugin_bytes += data_rem
+        current_file.plugin_patch_len = patch_len
+        if current_src and (not current_file.sources or current_file.sources[-1] != current_src):
+            current_file.sources.append(current_src)
+        data_rem = 0
+        current_file = None
+        state = 'padding' if pad_rem else 'header'
+
     for op, size, data in iter_ops(blob):
         if op == OP_DATA:
             feed_literal(data)
@@ -384,6 +404,8 @@ def analyze_layer(blob):
             if params.content_size == zstd.CONTENTSIZE_UNKNOWN:
                 raise ValueError("ZstdDict frame missing content size")
             advance_reused(params.content_size, OP_COPY)
+        elif op == OP_PLUGIN:
+            apply_plugin_patch(size)
         # OP_SEEK: no output bytes
 
     return files, hardlinks
@@ -465,6 +487,10 @@ def report(delta_path, verbose):
                     if f.payload_data:
                         f.compressed_payload = len(cctx.compress(bytes(f.payload_data)))
                         f.payload_data = bytearray()  # free memory
+                    elif f.plugin_patch_len:
+                        # Plugin patches are opaque and already compact; use
+                        # their on-wire size rather than re-estimating it.
+                        f.compressed_payload = f.plugin_patch_len
                     else:
                         f.compressed_payload = 0
 
@@ -478,6 +504,7 @@ def report(delta_path, verbose):
 
                 n_full    = sum(1 for f in regular if f.reuse_type == 'reused')
                 n_partial = sum(1 for f in regular if f.reuse_type == 'delta')
+                n_plugin  = sum(1 for f in regular if f.reuse_type == 'plugin')
                 n_new     = sum(1 for f in regular if f.reuse_type == 'new')
 
                 seen = set()
@@ -491,6 +518,7 @@ def report(delta_path, verbose):
                 print(f"  Regular files: {len(regular)}"
                       f"  (fully reused: {n_full},"
                       f"  partially reused: {n_partial},"
+                      f"  plugin-diffed: {n_plugin},"
                       f"  new: {n_new})")
                 print(f"  Unique source objects: {len(unique_sources)}")
 
