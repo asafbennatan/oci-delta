@@ -13,6 +13,7 @@ import (
 var (
 	importContainerStorage string
 	importTag              string
+	importForceTag         bool
 	importVerifyKey        string
 )
 
@@ -32,11 +33,24 @@ func init() {
 
 	importCmd.Flags().StringVar(&importContainerStorage, "container-storage", "", "podman container storage root (default: system default)")
 	importCmd.Flags().StringVarP(&importTag, "tag", "t", "", "tag name for the imported image")
+	importCmd.Flags().BoolVar(&importForceTag, "force-tag", false, "if --tag is already assigned to another image, move it to the imported image instead of failing")
 	importCmd.Flags().StringVar(&importVerifyKey, "verify-key", "", "path to cosign public key PEM file for signature verification")
 	addLogFlags(importCmd)
 }
 
+func validateImportFlags(tag string, forceTag bool) error {
+	if forceTag && tag == "" {
+		return fmt.Errorf("--force-tag requires --tag")
+	}
+
+	return nil
+}
+
 func runImport(cmd *cobra.Command, args []string) error {
+	if err := validateImportFlags(importTag, importForceTag); err != nil {
+		return err
+	}
+
 	store, err := ocidelta.OpenContainerStorage(importContainerStorage)
 	if err != nil {
 		return err
@@ -86,8 +100,9 @@ func runImport(cmd *cobra.Command, args []string) error {
 	}
 
 	imageID, err := ocidelta.ImportDelta(delta, store, dataSource, ocidelta.ImportOptions{
-		Tag:    importTag,
-		TmpDir: tmpDir,
+		Tag:      importTag,
+		ForceTag: importForceTag,
+		TmpDir:   tmpDir,
 	}, log)
 	if err != nil {
 		return err

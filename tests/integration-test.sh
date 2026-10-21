@@ -362,6 +362,54 @@ else
 fi
 
 # ============================================================
+# Import with --force-tag
+# ============================================================
+
+echo ""
+echo "=== Test: Import with --force-tag ==="
+
+FORCETAG_TAG="localhost/forcetag-test:latest"
+FORCETAG_OTHER_TAG="localhost/forcetag-test-other:latest"
+
+echo "  Importing delta 1→2 as $FORCETAG_TAG (image A)..."
+if FORCETAG_A_ID=$($OCI_DELTA import --tag "$FORCETAG_TAG" "$DELTAS/delta12.oci-archive"); then
+    pass "import image A with tag $FORCETAG_TAG"
+else
+    fail "import image A with tag $FORCETAG_TAG" "exit code $?"
+fi
+
+if ! podman tag "$FORCETAG_A_ID" "$FORCETAG_OTHER_TAG"; then
+    fail "setup: tag image A with $FORCETAG_OTHER_TAG" "exit code $?"
+fi
+
+echo "  Importing delta 4→5 with --force-tag onto $FORCETAG_TAG (image B)..."
+if FORCETAG_B_ID=$($OCI_DELTA import --tag "$FORCETAG_TAG" --force-tag "$DELTAS/delta45.oci-archive"); then
+    pass "import image B with --force-tag onto $FORCETAG_TAG"
+else
+    fail "import image B with --force-tag onto $FORCETAG_TAG" "exit code $?"
+fi
+
+RESOLVED_ID=$(podman inspect --format '{{.Id}}' "$FORCETAG_TAG" 2>/dev/null)
+if [ "$RESOLVED_ID" = "$FORCETAG_B_ID" ]; then
+    pass "force-tag: $FORCETAG_TAG now resolves to image B"
+else
+    fail "force-tag: $FORCETAG_TAG now resolves to image B" "expected $FORCETAG_B_ID, got $RESOLVED_ID"
+fi
+
+if podman inspect "$FORCETAG_A_ID" >/dev/null 2>&1; then
+    pass "force-tag: image A still exists by ID after tag was moved"
+else
+    fail "force-tag: image A still exists by ID after tag was moved" "image A not found"
+fi
+
+OTHER_RESOLVED_ID=$(podman inspect --format '{{.Id}}' "$FORCETAG_OTHER_TAG" 2>/dev/null)
+if [ "$OTHER_RESOLVED_ID" = "$FORCETAG_A_ID" ]; then
+    pass "force-tag: image A's other name ($FORCETAG_OTHER_TAG) survived"
+else
+    fail "force-tag: image A's other name ($FORCETAG_OTHER_TAG) survived" "expected $FORCETAG_A_ID, got $OTHER_RESOLVED_ID"
+fi
+
+# ============================================================
 # Summary
 # ============================================================
 

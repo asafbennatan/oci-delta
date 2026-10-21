@@ -17,6 +17,10 @@ import (
 type ImportOptions struct {
 	Tag    string
 	TmpDir string
+
+	// ForceTag moves Tag onto the imported image even if it is already
+	// assigned to another image in the store, instead of failing.
+	ForceTag bool
 }
 
 func ImportDelta(delta *DeltaArtifact, store storage.Store, dataSource DataSource, opts ImportOptions, log *slog.Logger) (string, error) {
@@ -24,6 +28,10 @@ func ImportDelta(delta *DeltaArtifact, store storage.Store, dataSource DataSourc
 		_ = dataSource.Close()
 		_ = dataSource.Cleanup()
 	}()
+
+	if opts.ForceTag && opts.Tag == "" {
+		return "", fmt.Errorf("ForceTag requires Tag to be set")
+	}
 
 	layerDiffIDs := delta.imageConfig.RootFS.DiffIDs
 	parentLayerID := ""
@@ -115,7 +123,7 @@ func ImportDelta(delta *DeltaArtifact, store storage.Store, dataSource DataSourc
 	manifestDigest := digest.FromBytes(manifestData)
 
 	var names []string
-	if opts.Tag != "" {
+	if opts.Tag != "" && !opts.ForceTag {
 		names = []string{opts.Tag}
 	}
 
@@ -141,6 +149,14 @@ func ImportDelta(delta *DeltaArtifact, store storage.Store, dataSource DataSourc
 
 	if err := store.SetImageBigData(image.ID, delta.imageConfigDigest.String(), configData, nil); err != nil {
 		return "", fmt.Errorf("failed to store config: %w", err)
+	}
+
+	if opts.Tag != "" && opts.ForceTag {
+		log.Debug("Reassigning tag", "tag", opts.Tag, "image", image.ID)
+
+		if err := store.AddNames(image.ID, []string{opts.Tag}); err != nil {
+			return "", fmt.Errorf("failed to assign tag %q: %w", opts.Tag, err)
+		}
 	}
 
 	log.Debug("Import complete!")
