@@ -103,6 +103,18 @@ $ bootc switch --transport=oci-archive reconstructed.oci-archive
 $ rm update.oci-delta reconstructed.oci-archive
 ```
 
+Import a delta directly into container storage, tagging the result.
+```
+$ oci-delta import --tag quay.io/example/app:1 update.oci-delta
+```
+
+If the tag is already assigned to another image, `--force-tag` moves it onto
+the newly imported image instead of failing. The previous image and its other
+names are preserved.
+```
+$ oci-delta import --tag quay.io/example/app:1 --force-tag update.oci-delta
+```
+
 ## Delta sizes
 
 Here are some example images and deltas between them. image is an automotive image, and image2 is a

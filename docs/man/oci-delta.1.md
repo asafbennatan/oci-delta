@@ -14,7 +14,7 @@ oci-delta - create and apply delta files between OCI image archives
 
 **oci-delta apply** [**--ostree-repo** *PATH*] [**--directory** *PATH*] [**--container-storage** *PATH*] [**--verify-key** *FILE*] [**--log-level** *LEVEL*] [**--debug**] [**-q**|**--quiet**] *delta-file output*
 
-**oci-delta import** [**--container-storage** *PATH*] [**-t**|**--tag** *NAME*] [**--verify-key** *FILE*] [**--log-level** *LEVEL*] [**--debug**] [**-q**|**--quiet**] *delta-file*
+**oci-delta import** [**--container-storage** *PATH*] [**-t**|**--tag** *NAME*] [**--force-tag**] [**--verify-key** *FILE*] [**--log-level** *LEVEL*] [**--debug**] [**-q**|**--quiet**] *delta-file*
 
 # DESCRIPTION
 
@@ -144,6 +144,9 @@ Apply a delta and import the result directly into container storage.
 
 **-t**, **--tag**=*NAME*
 :   Tag name for the imported image (e.g., myimage:latest).
+
+**--force-tag**
+:   If **--tag** is already assigned to another image in storage, move it to the imported image instead of failing. Only the requested tag is moved; the old image and its other names are preserved. Requires **--tag**. If the move itself fails after the image has been imported, the imported image is left untagged in storage.
 
 **--verify-key**=*FILE*
 :   Path to cosign public key in PEM format for signature verification.

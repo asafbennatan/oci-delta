@@ -30,6 +30,13 @@ type mockStore struct {
 	nextImageID                   string
 	createdImages                 []*storage.Image
 	imageBigData                  map[string]map[string][]byte
+	addNamesErr                   error
+	addNamesCalls                 []addNamesCall
+}
+
+type addNamesCall struct {
+	id    string
+	names []string
 }
 
 type failingReader struct {
@@ -125,6 +132,22 @@ func (m *mockStore) CreateImage(id string, names []string, layer, metadata strin
 	return image, nil
 }
 
+func (m *mockStore) AddNames(id string, names []string) error {
+	m.addNamesCalls = append(m.addNamesCalls, addNamesCall{id: id, names: names})
+
+	if m.addNamesErr != nil {
+		return m.addNamesErr
+	}
+
+	for _, image := range m.createdImages {
+		if image.ID == id {
+			image.Names = append(image.Names, names...)
+		}
+	}
+
+	return nil
+}
+
 func (m *mockStore) SetImageBigData(id, key string, data []byte, digestManifest func([]byte) (digest.Digest, error)) error {
 	if m.setImageBigDataErr != nil {
 		return m.setImageBigDataErr
@@ -195,10 +218,12 @@ func TestImportDelta(t *testing.T) {
 		diffData                map[string][]byte
 		tag                     string
 		expectedImageID         string
+		forceTag                bool
 		createImageErr          error
 		setImageBigDataErrOnKey string
 		readBlobErr             error
 		putLayerErr             error
+		addNamesErr             error
 		expectError             bool
 		errorContains           string
 	}{
@@ -220,6 +245,61 @@ func TestImportDelta(t *testing.T) {
 			tag:             "test:latest",
 			expectedImageID: "new-image-123",
 			expectError:     false,
+		},
+		{
+			name:               "error when force-tag set without tag",
+			sourceConfigDigest: "sha256:abc123",
+			configData:         testConfigData,
+			layerDigests:       []digest.Digest{testLayerDigest},
+			layerDescriptors:   []v1.Descriptor{testLayerDescriptor},
+			deltaLayerByTo:     map[digest.Digest]v1.Descriptor{},
+			blobData:           map[digest.Digest][]byte{},
+			existingLayers:     map[digest.Digest][]storage.Layer{},
+			tag:                "",
+			forceTag:           true,
+			expectError:        true,
+			errorContains:      "ForceTag requires Tag",
+		},
+		{
+			name:               "import delta with force-tag moves tag onto new image",
+			sourceConfigDigest: "sha256:abc123",
+			configData:         testConfigData,
+			layerDigests:       []digest.Digest{testLayerDigest},
+			layerDescriptors:   []v1.Descriptor{testLayerDescriptor},
+			deltaLayerByTo:     map[digest.Digest]v1.Descriptor{},
+			blobData:           map[digest.Digest][]byte{},
+			existingLayers: map[digest.Digest][]storage.Layer{
+				testLayerDigest: {{
+					ID:                 "existing-layer-1",
+					Parent:             "",
+					UncompressedDigest: testLayerDigest,
+				}},
+			},
+			tag:             "test:latest",
+			forceTag:        true,
+			expectedImageID: "new-image-123",
+			expectError:     false,
+		},
+		{
+			name:               "error when AddNames fails for force-tag",
+			sourceConfigDigest: "sha256:abc123",
+			configData:         testConfigData,
+			layerDigests:       []digest.Digest{testLayerDigest},
+			layerDescriptors:   []v1.Descriptor{testLayerDescriptor},
+			deltaLayerByTo:     map[digest.Digest]v1.Descriptor{},
+			blobData:           map[digest.Digest][]byte{},
+			existingLayers: map[digest.Digest][]storage.Layer{
+				testLayerDigest: {{
+					ID:                 "existing-layer-1",
+					Parent:             "",
+					UncompressedDigest: testLayerDigest,
+				}},
+			},
+			tag:           "test:latest",
+			forceTag:      true,
+			addNamesErr:   fmt.Errorf("name already in use"),
+			expectError:   true,
+			errorContains: "failed to assign tag",
 		},
 		{
 			name:               "import delta with tar-diff layer",
@@ -496,6 +576,7 @@ func TestImportDelta(t *testing.T) {
 				createImageErr:          tt.createImageErr,
 				setImageBigDataErrOnKey: tt.setImageBigDataErrOnKey,
 				putLayerErr:             tt.putLayerErr,
+				addNamesErr:             tt.addNamesErr,
 				putLayerCallback: func(parentID string, data io.Reader) (*storage.Layer, error) {
 					receivedData, _ := io.ReadAll(data)
 
@@ -541,8 +622,9 @@ func TestImportDelta(t *testing.T) {
 			dataSource := newMockDataSource()
 
 			imageID, err := ImportDelta(delta, store, dataSource, ImportOptions{
-				Tag:    tt.tag,
-				TmpDir: t.TempDir(),
+				Tag:      tt.tag,
+				ForceTag: tt.forceTag,
+				TmpDir:   t.TempDir(),
 			}, discardLogger())
 
 			if tt.expectError {
@@ -570,6 +652,19 @@ func TestImportDelta(t *testing.T) {
 			createdImage := store.createdImages[0]
 			if len(createdImage.Names) != 1 || createdImage.Names[0] != tt.tag {
 				t.Errorf("expected image name %q, got %v", tt.tag, createdImage.Names)
+			}
+
+			if tt.forceTag {
+				if len(store.addNamesCalls) != 1 {
+					t.Fatalf("expected 1 AddNames call, got %d", len(store.addNamesCalls))
+				}
+
+				call := store.addNamesCalls[0]
+				if call.id != createdImage.ID || len(call.names) != 1 || call.names[0] != tt.tag {
+					t.Errorf("expected AddNames(%q, [%q]), got AddNames(%q, %v)", createdImage.ID, tt.tag, call.id, call.names)
+				}
+			} else if len(store.addNamesCalls) != 0 {
+				t.Errorf("expected no AddNames calls, got %v", store.addNamesCalls)
 			}
 		})
 	}
